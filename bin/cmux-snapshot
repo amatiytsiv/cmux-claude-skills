@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""cmux-snapshot: 현재 cmux 레이아웃 + Claude 세션 ID를 JSON 스냅샷으로 저장
-사용법: cmux-snapshot [snapshot-name]
-  snapshot-name 기본값: "latest" (항상 덮어씀)
+"""cmux-snapshot: save the current cmux layout + Claude session IDs as a JSON snapshot
+Usage: cmux-snapshot [snapshot-name]
+  snapshot-name default: "latest" (always overwritten)
 
-환경 요구사항:
-  - macOS + cmux.app 설치
-  - Claude Code CLI 사용 시 ~/.claude/projects/ 에 세션 인덱스 존재
+Requirements:
+  - macOS + cmux.app installed
+  - For Claude Code CLI users: a session index in ~/.claude/projects/
 
-세션 ID 매핑 우선순위 (self-healing):
-  1. 살아있는 claude 프로세스의 --session-id + CMUX_SURFACE_ID env (정확도 100%)
-  2. ~/.cmux-snapshots/session-map.jsonl (SessionStart hook 영구 적립, 죽은 세션 포함)
-  3. fuzzy fallback — sessions-index.json + jsonl 직접 스캔 (제목/프롬프트 매칭)
+Session ID mapping priority (self-healing):
+  1. Live claude processes: --session-id + CMUX_SURFACE_ID env (100% accuracy)
+  2. ~/.cmux-snapshots/session-map.jsonl (SessionStart hook persistent log, includes dead sessions)
+  3. Fuzzy fallback — sessions-index.json + direct jsonl scan (title/prompt matching)
 """
 
 import json
@@ -32,15 +32,16 @@ CLAUDE_PROJECTS = Path(os.environ.get("CMUX_CLAUDE_PROJECTS", str(Path.home() / 
 
 UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
-# {panel_uuid_upper: claude_session_id} — main()에서 채워짐
+# {panel_uuid_upper: claude_session_id} — populated in main()
 LIVE_SESSIONS: dict = {}
 
 
 def discover_persisted_sessions() -> dict:
-    """session-map.jsonl에서 panel UUID -> session ID 영구 매핑을 읽습니다.
+    """Read panel UUID -> session ID persistent mappings from session-map.jsonl.
 
-    Hook(cmux-snapshot-track)으로 적립된 영구 매핑. 죽은 세션도 추적 가능.
-    같은 panel에 여러 매핑이 있으면 가장 최근 ts 우선.
+    Persistent mappings accumulated by the SessionStart hook (cmux-snapshot-track).
+    Includes dead sessions. When multiple mappings exist for the same panel,
+    the most recent timestamp wins.
     returns: {panel_uuid_upper: session_id}
     """
     log = SNAPSHOT_DIR / "session-map.jsonl"
@@ -68,10 +69,10 @@ def discover_persisted_sessions() -> dict:
 
 
 def discover_live_sessions() -> dict:
-    """ps 기반으로 살아있는 claude 프로세스의 panel UUID -> session ID 매핑을 추출합니다.
+    """Extract panel UUID -> session ID mappings from live claude processes via ps.
 
-    `ps -eo pid,command`로 `--session-id <UUID>` 추출 + `ps -E -p <pid>`로
-    CMUX_SURFACE_ID 환경변수 추출 → panel UUID와 sessionId의 100% 정확한 매핑.
+    Uses `ps -eo pid,command` to find --session-id <UUID>, then `ps -E -p <pid>`
+    to extract the CMUX_SURFACE_ID env var — yields 100% accurate panel-to-session mapping.
     returns: {panel_uuid_upper: session_id}
     """
     mapping: dict = {}
@@ -112,11 +113,11 @@ def discover_live_sessions() -> dict:
 
 
 def project_dir_for(cwd: str) -> Path | None:
-    """cwd → ~/.claude/projects 키 (모든 non-alphanumeric을 '-'로 치환).
+    """Convert cwd to ~/.claude/projects key (replace all non-alphanumeric with '-').
 
-    예: '/Users/brady/Library/Mobile Documents/iCloud~md~obsidian/...'
+    Example: '/Users/brady/Library/Mobile Documents/iCloud~md~obsidian/...'
         → '-Users-brady-Library-Mobile-Documents-iCloud-md-obsidian-...'
-    실제로 존재하는 경우에만 Path 반환.
+    Returns Path only if it actually exists.
     """
     if not cwd:
         return None
@@ -128,7 +129,7 @@ def project_dir_for(cwd: str) -> Path | None:
 
 
 def extract_first_prompt(jsonl_path: Path) -> str | None:
-    """jsonl에서 첫 user 텍스트 메시지 추출 (slash 명령이나 <tag>로 시작하는 것은 제외)."""
+    """Extract the first user text message from a jsonl (skips slash commands and <tag>-prefixed)."""
     try:
         with open(jsonl_path) as f:
             for line in f:
@@ -165,7 +166,7 @@ def _score_text(title_lower: str, text: str) -> int:
 
 
 def _find_in_index(index_path: Path, title_lower: str) -> tuple[str | None, str | None, str | None]:
-    """sessions-index.json에서 매칭. fullPath가 실존하는 후보만 반환."""
+    """Match in sessions-index.json. Only returns candidates whose fullPath actually exists."""
     if not index_path.exists():
         return None, None, None
     try:
@@ -191,7 +192,7 @@ def _find_in_index(index_path: Path, title_lower: str) -> tuple[str | None, str 
 
 
 def _find_in_files(project_dir: Path, title_lower: str) -> tuple[str | None, str | None, str | None]:
-    """*.jsonl 직접 스캔으로 매칭 (인덱스 stale 대비 fallback)."""
+    """Direct *.jsonl scan for matching (fallback when index is stale)."""
     if not project_dir or not project_dir.exists():
         return None, None, None
     files = sorted(project_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -211,11 +212,11 @@ def _find_in_files(project_dir: Path, title_lower: str) -> tuple[str | None, str
 
 
 def find_session(surface_title: str, cwd: str) -> tuple[str | None, str | None, str | None]:
-    """surface 제목 + CWD로 (session_id, full_path, first_prompt) 탐색.
+    """Find (session_id, full_path, first_prompt) by surface title + CWD.
 
-    1순위: CWD 프로젝트의 sessions-index.json — fullPath 존재 검증
-    2순위: CWD 프로젝트의 *.jsonl 직접 스캔 (mtime 내림차순, prompt 매칭)
-    3순위: 전체 인덱스 (파일 존재 검증)
+    Priority 1: CWD project's sessions-index.json — verified fullPath existence
+    Priority 2: CWD project's *.jsonl direct scan (mtime descending, prompt matching)
+    Priority 3: All indexes (file existence verified)
     """
     clean = re.sub(r"^[✳⠂⠐\s]+", "", surface_title or "").strip()
     if not clean:
@@ -255,9 +256,9 @@ def find_session(surface_title: str, cwd: str) -> tuple[str | None, str | None, 
     return None, None, None
 
 
-# 기존 시그니처와의 호환성 유지를 위한 thin wrapper
+# Thin wrapper for backward compatibility with old function signature
 def find_session_id(surface_title: str, cwd: str) -> str | None:
-    """기존 호환: session_id만 반환."""
+    """Backward-compatible: returns session_id only."""
     sid, _, _ = find_session(surface_title, cwd)
     return sid
 
@@ -279,7 +280,7 @@ def build_layout(node, panels_by_id):
             full_path: str | None = None
             first_prompt: str | None = None
 
-            # 1순위: live + persisted 매핑 (panel UUID 기반, 100% 정확)
+            # Priority 1: live + persisted mapping (panel UUID based, 100% accurate)
             mapped_sid = LIVE_SESSIONS.get(pid.upper())
             if mapped_sid:
                 session_id = mapped_sid
@@ -291,7 +292,7 @@ def build_layout(node, panels_by_id):
                         first_prompt = (extract_first_prompt(candidate) or "")[:120] or None
                 is_claude = True
             elif is_claude:
-                # 2순위: fuzzy fallback (죽은 세션이거나 매핑 없을 때)
+                # Priority 2: fuzzy fallback (dead session or no mapping available)
                 session_id, full_path, first_prompt = find_session(title, cwd)
 
             surfaces.append(
@@ -324,37 +325,37 @@ def count(node, what):
         return 1 if what == "panes" else len(node.get("surfaces", []))
     if node["type"] == "split":
         return count(node["first"], what) + count(node["second"], what)
-    return 0  # "unknown" 노드는 0으로 처리
+    return 0  # "unknown" nodes count as 0
 
 
 def main():
     raw_name = sys.argv[1] if len(sys.argv) > 1 else "latest"
-    # path traversal 방지: 파일명만 허용
+    # Path-traversal guard: filename only
     if not re.fullmatch(r"[A-Za-z0-9._\-]+", raw_name):
-        print(f"Error: 스냅샷 이름에 허용되지 않는 문자가 있습니다: {raw_name!r}")
+        print(f"Error: snapshot name contains disallowed characters: {raw_name!r}")
         sys.exit(1)
     name = raw_name
     SNAPSHOT_DIR.mkdir(exist_ok=True)
     out = SNAPSHOT_DIR / f"{name}.json"
 
     if not SESSION_JSON.exists():
-        print(f"Error: cmux 세션 파일을 찾을 수 없습니다: {SESSION_JSON}")
-        print("cmux.app이 실행 중인지 확인하세요.")
+        print(f"Error: cmux session file not found: {SESSION_JSON}")
+        print("Make sure cmux.app is running.")
         sys.exit(1)
 
     try:
         with open(SESSION_JSON) as f:
             session = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
-        print(f"Error: 세션 파일 파싱 실패: {e}")
+        print(f"Error: failed to parse session file: {e}")
         sys.exit(1)
 
     global LIVE_SESSIONS
-    persisted = discover_persisted_sessions()  # 영구 매핑 (죽은 세션 포함)
-    live = discover_live_sessions()  # 현재 살아있는 매핑 (정확도 최상)
-    LIVE_SESSIONS = {**persisted, **live}  # live가 우선
+    persisted = discover_persisted_sessions()  # persistent mappings (includes dead sessions)
+    live = discover_live_sessions()  # currently live mappings (highest accuracy)
+    LIVE_SESSIONS = {**persisted, **live}  # live takes precedence
     if live or persisted:
-        print(f"✓ 세션 매핑: live={len(live)} persisted={len(persisted)} total={len(LIVE_SESSIONS)}")
+        print(f"✓ Session mapping: live={len(live)} persisted={len(persisted)} total={len(LIVE_SESSIONS)}")
 
     snapshot = {
         "version": 2,
@@ -379,7 +380,7 @@ def main():
     with open(out, "w") as f:
         json.dump(snapshot, f, ensure_ascii=False, indent=2)
 
-    print(f"✓ 스냅샷 저장: {out}")
+    print(f"✓ snapshot saved: {out}")
     for ws in snapshot["workspaces"]:
         panes = count(ws["layout"], "panes")
         surfs = count(ws["layout"], "surfaces")
@@ -396,7 +397,7 @@ def main():
 
         claudes = claude_count(ws["layout"])
         sessions = session_count(ws["layout"])
-        extra = f", Claude {claudes}개 (세션ID 매칭 {sessions}개)" if claudes else ""
+        extra = f", {claudes} Claude (session-ID matches: {sessions})" if claudes else ""
         print(f"  {ws['name']}: {panes} panes, {surfs} surfaces{extra}")
 
 
