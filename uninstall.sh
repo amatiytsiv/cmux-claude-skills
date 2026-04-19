@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
-# uninstall.sh: cmux-claude-skills 심볼릭 링크를 제거합니다.
-# 사용법: ./uninstall.sh
+# uninstall.sh: remove cmux-claude-skills symlinks
+# Usage: ./uninstall.sh
 
 set -euo pipefail
 
@@ -28,4 +28,4 @@ for src in "$BIN_SRC"/cmux-*; do
 done
 
 echo ""
-echo "✓ 제거 완료: ${REMOVED}개 제거, ${NOT_FOUND}개 없음"
+echo "✓ uninstall complete: ${REMOVED} removed, ${NOT_FOUND} not found"
