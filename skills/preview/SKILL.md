@@ -1,27 +1,27 @@
 ---
 name: preview
-description: 마크다운 파일을 cmux 사이드 패널에서 실시간 미리보기로 엽니다. 파일 변경 시 자동 새로고침됩니다.
+description: Open a markdown file in cmux's side panel as a live preview. Auto-refreshes when the file changes.
 argument-hint: "<file.md>"
 ---
 
-마크다운 파일을 cmux 내장 뷰어로 엽니다. Claude가 문서를 수정하는 동안 실시간으로 확인할 수 있습니다.
+Open a markdown file in cmux's built-in viewer. Lets you watch a doc update in real time while Claude edits it.
 
-인자: {{ARGUMENTS}}
+Argument: {{ARGUMENTS}}
 
-## 실행 순서
+## Run order
 
-1. 인자로 파일 경로가 주어지면 바로 엽니다:
+1. If a file path is given, open it directly:
    ```
    cmux-preview {{ARGUMENTS}}
    ```
 
-2. 인자가 없으면:
-   - 현재 디렉토리에서 최근 수정된 `.md` 파일을 찾아 보여주고
-   - 어떤 파일을 열지 확인 후 실행합니다
+2. If no argument is given:
+   - Find the most recently modified `.md` file in the current directory and show it
+   - Confirm with the user which file to open before running
 
-3. 실행 후 "미리보기가 열렸습니다: `<파일명>`" 이라고 알려줍니다.
+3. After opening, report: "preview opened: `<filename>`".
 
-## 참고
+## Notes
 
-- cmux markdown 뷰어는 파일 변경 시 자동으로 새로고침됩니다.
-- 절대 경로로 변환 후 전달하므로 어느 디렉토리에서든 동작합니다.
+- The cmux markdown viewer auto-refreshes when the file changes.
+- Paths are converted to absolute, so it works from any directory.

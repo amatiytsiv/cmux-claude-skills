@@ -1,34 +1,34 @@
 ---
 name: snapshot
-description: 현재 cmux 레이아웃과 Claude 세션 ID를 JSON 스냅샷으로 저장합니다. cmux 재시작 시 복원에 사용됩니다.
-argument-hint: "[snapshot-name]  기본: latest"
+description: Save the current cmux layout and Claude session IDs as a JSON snapshot. Used to restore your workspace after a cmux restart.
+argument-hint: "[snapshot-name]  default: latest"
 ---
 
-현재 cmux 레이아웃 트리와 각 surface에 연결된 Claude 세션 ID를 저장합니다.
+Save the current cmux layout tree and the Claude session ID attached to each surface.
 
-인자: {{ARGUMENTS}}
+Argument: {{ARGUMENTS}}
 
-## 실행
+## Run
 
 ```
 cmux-snapshot {{ARGUMENTS}}
 ```
 
-인자가 없으면 `~/.cmux-snapshots/latest.json`에 저장합니다 (항상 덮어씀).
+If no argument is given, the snapshot is written to `~/.cmux-snapshots/latest.json` (overwritten on every run).
 
-## 저장 내용
+## What gets saved
 
-- 워크스페이스별 pane 트리 구조 (split 방향/비율 포함)
-- 각 surface의 제목, 작업 디렉토리, Claude 세션 여부
-- Claude 세션이면 `~/.claude/projects/` 에서 세션 ID 매칭 (CWD 기반 우선, 전체 검색 fallback)
+- The pane tree per workspace (split direction and ratio included)
+- Each surface's title, working directory, and whether it hosts a Claude session
+- For Claude surfaces, the session ID is matched from `~/.claude/projects/` (CWD-based match first, full search as fallback)
 
-## 실행 후 보고
+## After running
 
-저장된 워크스페이스 수와 Claude 세션 매칭 결과를 요약합니다.
+Reports the number of workspaces saved and a summary of Claude session matches.
 
-## 자동화
+## Automation
 
-Claude Code의 Stop 훅에 등록하면 세션 종료 시마다 자동 저장됩니다:
+Register on Claude Code's Stop hook to snapshot automatically at the end of every session:
 
 ```json
 "hooks": {

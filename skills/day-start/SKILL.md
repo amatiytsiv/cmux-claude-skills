@@ -1,35 +1,34 @@
 ---
 name: day-start
-description: 하루 시작 시 미리 정의된 cmux 워크스페이스들을 일괄 생성합니다. 이미 존재하는 워크스페이스는 건너뜁니다.
+description: Bulk-create a predefined set of cmux workspaces at the start of a day. Workspaces that already exist are skipped.
 argument-hint: ""
 ---
 
-`cmux-day-start`를 실행해 하루 작업 환경을 한 번에 세팅합니다.
+Run `cmux-day-start` to spin up your day's working environment in one shot.
 
-## 실행
+## Run
 
 ```
 cmux-day-start
 ```
 
-## 설정 방법
+## Setup
 
-`bin/cmux-day-start.example`을 복사해 `~/.local/bin/cmux-day-start`로 저장한 뒤,
-파일 안의 워크스페이스 목록을 본인 프로젝트에 맞게 수정하세요.
+Copy `bin/cmux-day-start.example` to `~/.local/bin/cmux-day-start` and edit the workspace list to match your projects:
 
 ```bash
 cp /path/to/cmux-claude-skills/bin/cmux-day-start.example ~/.local/bin/cmux-day-start
 chmod +x ~/.local/bin/cmux-day-start
-# 파일을 열어 PROJECTS_ROOT와 create_ws 목록 수정
+# Open the file and edit PROJECTS_ROOT and the create_ws calls
 ```
 
-## 기본 제공 레이아웃 커맨드
+## Built-in layout commands
 
-| 커맨드 | 설명 |
-|--------|------|
-| `cmux-skills` | Claude + 파일 탐색 |
-| `cmux-web [dir] [cmd]` | Claude + dev 서버 |
+| Command | Description |
+|---------|-------------|
+| `cmux-skills` | Claude + file explorer |
+| `cmux-web [dir] [cmd]` | Claude + dev server |
 
-## 실행 후 보고
+## After running
 
-생성된 워크스페이스 목록과 건너뛴 항목을 요약합니다.
+Reports the workspaces created and any that were skipped.

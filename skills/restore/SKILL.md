@@ -1,38 +1,38 @@
 ---
 name: restore
-description: cmux-snapshot으로 저장한 스냅샷을 복원합니다. 워크스페이스 레이아웃과 Claude 세션을 재구성합니다.
-argument-hint: "[snapshot-name-or-path]  기본: 최신 스냅샷"
+description: Restore a snapshot saved by cmux-snapshot. Rebuilds workspace layouts and reattaches Claude sessions.
+argument-hint: "[snapshot-name-or-path]  default: latest snapshot"
 ---
 
-저장된 스냅샷에서 cmux 레이아웃과 Claude 세션을 복원합니다.
+Restore the cmux layout and Claude sessions from a saved snapshot.
 
-인자: {{ARGUMENTS}}
+Argument: {{ARGUMENTS}}
 
-## 실행
+## Run
 
 ```
 cmux-restore {{ARGUMENTS}}
 ```
 
-## 복원 순서
+## Restore order
 
-1. 스냅샷 파일 로드 (기본: `~/.cmux-snapshots/latest.json`)
-2. 각 워크스페이스를 `cmux new-workspace`로 생성
-3. pane 트리를 재귀적으로 `cmux new-split`으로 재구성
-4. 각 surface에 `cd <dir>` 전송
-5. Claude surface는:
-   - 세션 ID 있으면: `claude --resume <id>` 로 정확한 세션 복원
-   - 없으면: `claude -c` 로 최근 세션 복원
+1. Load the snapshot file (default: `~/.cmux-snapshots/latest.json`)
+2. Create each workspace with `cmux new-workspace`
+3. Recreate the pane tree recursively with `cmux new-split`
+4. Send `cd <dir>` to each surface
+5. For Claude surfaces:
+   - With a session ID: `claude --resume <id>` to restore the exact session
+   - Without one: `claude -c` to resume the most recent session
 
-## 타이밍 조정
+## Timing
 
-머신이 느리거나 복원 중 실패가 생기면 대기 시간을 늘리세요:
+If your machine is slow or restoration fails partway, increase the delay between cmux commands:
 
 ```bash
 CMUX_RESTORE_DELAY=1.0 cmux-restore
 ```
 
-## 주의사항
+## Notes
 
-- cmux.app이 실행 중이어야 합니다.
-- 세션 ID 매칭은 베스트에포트 방식입니다. Claude 세션 인덱스(`~/.claude/projects/`)가 없으면 `claude -c` fallback을 사용합니다.
+- cmux.app must be running.
+- Session ID matching is best-effort. If the Claude session index (`~/.claude/projects/`) isn't available, `claude -c` is used as a fallback.
