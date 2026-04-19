@@ -1,27 +1,27 @@
 #!/usr/bin/env zsh
-# cmux-day-start: 하루 시작 시 모든 워크스페이스 자동 생성
-# 사용법: cmux-day-start
-# 이미 존재하는 워크스페이스는 건너뜁니다
+# cmux-day-start: bulk-create all your daily workspaces at once
+# Usage: cmux-day-start
+# Workspaces that already exist are skipped.
 #
 # ────────────────────────────────────────────────────────────
-# 이 파일은 예시 템플릿입니다. 복사해서 본인의 프로젝트 경로로
-# 수정한 뒤 ~/.local/bin/cmux-day-start 로 저장하세요.
+# This file is an example template. Copy it, edit it to point
+# at your own project paths, and save as ~/.local/bin/cmux-day-start.
 # ────────────────────────────────────────────────────────────
 
 set -euo pipefail
 
 if ! command -v cmux &>/dev/null; then
-  echo "Error: cmux CLI를 찾을 수 없습니다."
+  echo "Error: cmux CLI not found."
   exit 1
 fi
 
-# ── 사용자 설정 (여기를 수정하세요) ───────────────────────
-# 프로젝트 루트 디렉토리
+# ── User settings (edit these) ───────────────────────────────
+# Project root directory
 PROJECTS_ROOT="$HOME/projects"
 
-# 각 워크스페이스: (이름 디렉토리 레이아웃-커맨드)
-# 레이아웃 커맨드: cmux-ios, cmux-n8n, cmux-data, cmux-skills, cmux-web
-# ──────────────────────────────────────────────────────────
+# Each workspace: (name, directory, layout-command)
+# Layout commands: cmux-ios, cmux-n8n, cmux-data, cmux-skills, cmux-web
+# ─────────────────────────────────────────────────────────────
 
 workspace_exists() {
   cmux list-workspaces 2>/dev/null | grep -qE "[[:space:]]${1}([[:space:]]|$)"
@@ -33,27 +33,27 @@ create_ws() {
   local cmd=$3
 
   if workspace_exists "$name"; then
-    echo "✓ '$name' 이미 존재, 건너뜀"
+    echo "✓ '$name' already exists, skipping"
     return
   fi
 
   if [[ ! -d "$dir" ]]; then
-    echo "Warning: 디렉토리 없음, 건너뜀 → $dir"
+    echo "Warning: directory not found, skipping → $dir"
     return
   fi
 
-  echo "→ '$name' 생성 중..."
+  echo "→ creating '$name'..."
   local REF
   REF=$(cmux new-workspace --cwd "$dir" --command "$cmd" | grep -oE "workspace:[0-9]+" | head -1 || true)
   sleep "${CMUX_INIT_DELAY:-0.4}"
-  [[ -n "$REF" ]] && cmux rename-workspace --workspace "$REF" "$name" 2>/dev/null && echo "  완료: $name"
+  [[ -n "$REF" ]] && cmux rename-workspace --workspace "$REF" "$name" 2>/dev/null && echo "  done: $name"
 }
 
 echo "==============================="
 echo "  cmux day-start"
 echo "==============================="
 
-# 예시 워크스페이스 — 본인 프로젝트에 맞게 수정하세요
+# Example workspaces — edit to match your projects
 create_ws "ios-app"      "$PROJECTS_ROOT/ios-app"      "cmux-ios \"$PROJECTS_ROOT/ios-app\" && claude"
 create_ws "api-server"   "$PROJECTS_ROOT/api-server"   "cmux-web \"$PROJECTS_ROOT/api-server\" \"npm run dev\" && claude"
 create_ws "data-science" "$PROJECTS_ROOT/data"          "cmux-data && claude"
@@ -64,4 +64,4 @@ echo ""
 echo "==============================="
 cmux list-workspaces
 echo "==============================="
-echo "day-start 완료!"
+echo "day-start complete!"
