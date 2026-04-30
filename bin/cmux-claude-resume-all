@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """cmux-claude-resume-all
-cmux 재시작 후 layout이 복원된 상태에서, 모든 panel에 claude --resume <sid>를 보내
-이전 작업 세션을 자동 복구합니다.
+After a cmux restart with restored layout, sends `claude --resume <sid>` to every panel
+to automatically recover previous work sessions.
 
-원리:
-  1. cmux session JSON에서 살아있는 모든 panel UUID를 layout 순서대로 수집
-  2. ~/.cmux-snapshots/session-map.jsonl에서 panel UUID → sessionId 매핑 lookup
-  3. cmux list-workspaces / list-panes / list-pane-surfaces로 각 panel의 cmux ref 확보
-  4. 각 surface에 'claude --resume <sid>' 를 cmux send (subprocess argv, shell injection 방지)
-  5. 매핑 없는 panel은 skip (사용자가 직접)
+How it works:
+  1. Collects all live panel UUIDs from the cmux session JSON in layout order
+  2. Looks up panel UUID → sessionId mappings from ~/.cmux-snapshots/session-map.jsonl
+  3. Gets the cmux ref for each panel via cmux list-workspaces / list-panes / list-pane-surfaces
+  4. Sends 'claude --resume <sid>' to each surface via cmux send (subprocess argv, no shell injection)
+  5. Panels without a mapping are skipped (user handles manually)
 
-옵션:
-  --dry-run   실제 send 없이 어떤 명령이 갈지만 출력
+Options:
+  --dry-run   Print what commands would be sent without actually sending them
 
-환경변수:
-  CMUX_SNAPSHOT_DIR     스냅샷 디렉토리. 기본 ~/.cmux-snapshots
-  CMUX_SESSION_FILE     cmux 세션 파일. 기본 ~/Library/Application Support/cmux/session-com.cmuxterm.app.json
+Environment variables:
+  CMUX_SNAPSHOT_DIR     Snapshot directory. Default ~/.cmux-snapshots
+  CMUX_SESSION_FILE     cmux session file. Default ~/Library/Application Support/cmux/session-com.cmuxterm.app.json
 """
 
 import json
@@ -39,13 +39,13 @@ _SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,128}$")
 
 
 def run(argv: list[str]) -> str:
-    """shell=False로 cmux 명령 실행 — shell injection 없음."""
+    """Run a cmux command with shell=False — no shell injection."""
     r = subprocess.run(argv, capture_output=True, text=True)
     return r.stdout.strip()
 
 
 def latest_panel_to_session() -> dict:
-    """{panel_uuid_upper: session_id} — 같은 panel은 가장 최근 ts 우선."""
+    """{panel_uuid_upper: session_id} — for duplicate panels, most recent ts wins."""
     if not MAP_FILE.exists():
         return {}
     latest: dict = {}
@@ -70,7 +70,7 @@ def latest_panel_to_session() -> dict:
 
 
 def collect_layout_panels(session: dict) -> list:
-    """[(workspace_idx, workspace_name, cwd, panel_uuid_upper)] — cmux JSON 순서대로."""
+    """[(workspace_idx, workspace_name, cwd, panel_uuid_upper)] — in cmux JSON order."""
     out: list = []
     for window in session.get("windows", []):
         for ws_idx, ws in enumerate(window.get("tabManager", {}).get("workspaces", []), start=1):
@@ -101,7 +101,7 @@ def list_workspaces() -> list:
         ws_ref = next((t for t in toks if t.startswith("workspace:") and _REF_RE.match(t)), None)
         if not ws_ref:
             continue
-        # ws_ref 다음 토큰부터가 name (selected 마커 제거)
+        # tokens after ws_ref are the name (strip selected marker)
         try:
             i = toks.index(ws_ref)
             name_toks = [t for t in toks[i + 1:] if t not in ("[selected]", "*")]
@@ -113,7 +113,7 @@ def list_workspaces() -> list:
 
 
 def map_json_ws_to_ref(session: dict, layout: list, cli_workspaces: list) -> dict:
-    """JSON workspace 순번 → cmux ws_ref. customTitle 우선 매칭, 동명은 panel 수로 disambiguate."""
+    """Map JSON workspace index → cmux ws_ref. Matches by customTitle first, disambiguates by panel count."""
     json_ws_meta: list = []  # [(ws_idx, name, panel_count)]
     for window in session.get("windows", []):
         for ws_idx, ws in enumerate(window.get("tabManager", {}).get("workspaces", []), start=1):
@@ -124,7 +124,7 @@ def map_json_ws_to_ref(session: dict, layout: list, cli_workspaces: list) -> dic
     used: set = set()
     out: dict = {}
     for ws_idx, name, _cnt in json_ws_meta:
-        # 같은 name 후보들 — 안 쓴 것 중 첫 번째
+        # candidates with matching name — take first unused
         for ws_ref, cli_name in cli_workspaces:
             if ws_ref in used:
                 continue
@@ -136,7 +136,7 @@ def map_json_ws_to_ref(session: dict, layout: list, cli_workspaces: list) -> dic
 
 
 def collect_surface_seq(ws_ref: str) -> list:
-    """ws_ref 내 모든 surface_ref를 cmux 출력 순서대로 수집."""
+    """Collect all surface_refs within ws_ref in cmux output order."""
     panes_out = run(["cmux", "list-panes", "--workspace", ws_ref])
     pane_refs = [
         tok for line in panes_out.splitlines() for tok in line.split()
@@ -160,31 +160,31 @@ def _cmux_available() -> bool:
 
 def main() -> None:
     if not _cmux_available():
-        print("Error: cmux CLI를 찾을 수 없습니다. cmux.app이 설치되어 있는지 확인하세요.")
+        print("Error: cmux CLI not found. Make sure cmux.app is installed.")
         sys.exit(1)
 
     dry = "--dry-run" in sys.argv
 
     panel_to_sid = latest_panel_to_session()
     if not panel_to_sid:
-        print("✗ session-map.jsonl 비어있음. 먼저 SessionStart hook(cmux-snapshot-track)이 적립되어야 합니다.")
+        print("✗ session-map.jsonl is empty. The SessionStart hook (cmux-snapshot-track) must accumulate records first.")
         sys.exit(1)
 
     if not SESSION_JSON.exists():
-        print(f"Error: cmux 세션 파일을 찾을 수 없습니다: {SESSION_JSON}")
+        print(f"Error: cmux session file not found: {SESSION_JSON}")
         sys.exit(1)
 
     try:
         with open(SESSION_JSON) as f:
             session = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
-        print(f"Error: 세션 파일 파싱 실패: {e}")
+        print(f"Error: failed to parse session file: {e}")
         sys.exit(1)
 
     layout = collect_layout_panels(session)
     ws_refs = map_json_ws_to_ref(session, layout, list_workspaces())
 
-    print(f"매핑 {len(panel_to_sid)}개, 현재 layout {len(layout)} panel\n")
+    print(f"Mappings: {len(panel_to_sid)}, current layout: {len(layout)} panels\n")
 
     sent = 0
     skipped = 0
@@ -198,7 +198,7 @@ def main() -> None:
         surf_seq = collect_surface_seq(ws_ref)
         if len(surf_seq) != len(ws_panels):
             ws_name = ws_panels[0][1] if ws_panels else "?"
-            print(f"⚠ ws[{ws_idx}] {ws_name}: surface 수 {len(surf_seq)} != panel 수 {len(ws_panels)} (skip)")
+            print(f"⚠ ws[{ws_idx}] {ws_name}: surface count {len(surf_seq)} != panel count {len(ws_panels)} (skip)")
             continue
 
         for (_, _, _cwd, panel_uuid), surf_ref in zip(ws_panels, surf_seq):
@@ -212,7 +212,7 @@ def main() -> None:
                      f"claude --resume {sid}\n"])
             sent += 1
 
-    print(f"\n결과: sent={sent} skipped(매핑없음)={skipped} dry_run={dry}")
+    print(f"\nResult: sent={sent} skipped(no mapping)={skipped} dry_run={dry}")
 
 
 if __name__ == "__main__":

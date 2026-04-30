@@ -39,4 +39,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `cmux-day-start.example`: Day-start workspace template
 - Claude Code plugin manifest (`cmux-kit`)
 - `install.sh` / `uninstall.sh`
-- `README.md` (English) + `README.ko.md` (한국어)
+- `README.md` (English) + `README.ko.md` (Korean)
